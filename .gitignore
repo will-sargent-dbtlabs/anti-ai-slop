@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*.env
+.venv/
+venv/
+*-workspace/
+config.json
