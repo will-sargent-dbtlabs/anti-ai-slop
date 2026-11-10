@@ -105,7 +105,7 @@ reports get at most two passes. Independent review is optional and requires cons
 For Claude Code:
 
 ```bash
-git clone https://github.com/misbahsy/anti-ai-slop.git
+git clone https://github.com/will-sargent-dbtlabs/anti-ai-slop.git
 cp -r anti-ai-slop/skills/anti-ai-slop ~/.claude/skills/
 ```
 
