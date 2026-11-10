@@ -19,7 +19,9 @@ Exit codes: 0 = nothing found (or --fix succeeded), 1 = findings remain, 2 = usa
 import argparse
 import json
 import os
+import stat
 import sys
+import tempfile
 import unicodedata
 
 # Deleted outright. None of these carry meaning in Latin-script prose.
@@ -141,6 +143,38 @@ def summarize(findings):
     return counts
 
 
+def atomic_write(path, text):
+    """Replace a destination from a private sibling file without following links."""
+    dest = os.path.abspath(path)
+    if os.path.islink(dest):
+        raise OSError("refusing symlink output")
+    parent = os.path.dirname(dest)
+    try:
+        mode = stat.S_IMODE(os.stat(dest, follow_symlinks=False).st_mode)
+    except FileNotFoundError:
+        mask = os.umask(0)
+        os.umask(mask)
+        mode = 0o666 & ~mask
+    fd, temporary = tempfile.mkstemp(prefix="." + os.path.basename(dest) + ".", dir=parent)
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporary, dest)
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
 def main():
     ap = argparse.ArgumentParser(description="Strip invisible characters from text.")
     ap.add_argument("path", help="File to clean, or - for stdin.")
@@ -154,6 +188,9 @@ def main():
     if args.path == "-":
         text = sys.stdin.read()
     else:
+        if args.fix and os.path.islink(args.path):
+            sys.stderr.write("Refusing to rewrite a symlink.\n")
+            return 2
         if not os.path.isfile(args.path):
             sys.stderr.write("No such file: {}\n".format(args.path))
             return 2
@@ -187,8 +224,14 @@ def main():
         if dest is None:
             sys.stdout.write(cleaned)
         else:
-            with open(dest, "w", encoding="utf-8") as fh:
-                fh.write(cleaned)
+            if os.path.islink(dest):
+                sys.stderr.write("Refusing to write through a symlink.\n")
+                return 2
+            try:
+                atomic_write(dest, cleaned)
+            except OSError:
+                sys.stderr.write("Could not safely write output.\n")
+                return 2
             if not args.json:
                 print("\nWrote {}".format(dest))
         return 0

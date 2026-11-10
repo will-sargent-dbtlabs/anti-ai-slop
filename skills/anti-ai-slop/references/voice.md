@@ -43,13 +43,14 @@ when they obscure the meaning. Keep them when they are how this person writes.
 
 ## The gate still runs
 
-Run the linter and the reviewer as usual, with one addition to the reviewer's
-brief: it is checking whether the edit erased the writer. Tell it the draft is
+Run the linter and one self-check; a subagent or repeated rewrite is not required.
+Use an independent reviewer only when requested. If used, ask it to check whether
+the edit erased the writer. Tell it the draft is
 human-written and ask it to flag any line where the rewrite sounds more like a
 competent stranger than like the original author.
 
 Expect a lower linter score than a full scrub produces, and accept it. Suppress
-the findings you are deliberately keeping with `<!-- slop-ignore -->` and say why.
+the findings you are deliberately keeping with a rule ID, such as `<!-- slop-ignore W1 -->`, and explain the reason separately.
 A draft at 82 that still sounds like the person who wrote it beats a 100 that
 does not.
 

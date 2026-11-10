@@ -231,8 +231,9 @@ adds any. That is information the user needs.
 **Vary sentence length.** Speech does. Do not enforce a quota, do not chase a
 grade level, and do not replace long uniform sentences with short uniform ones.
 
-**Break the tricolon.** Three parallel items, paragraph after paragraph, is the
-rhythm tell readers notice without being able to name. Use two items, or one.
+**Watch for forced tricolons.** Three parallel items can become a noticeable
+rhythm when repeated paragraph after paragraph. Keep a genuine list of three
+parallel facts; do not add or reshape material just to create a three-part beat.
 
 **Do not stack fragments.** Four short sentences in a row reads as manufactured
 punch, not confidence.
@@ -294,13 +295,14 @@ deciding it is a template.
 
 **After**
 
-> Deploy problems usually look technical. In the four teams we reviewed, the
-> blocker was that nobody would approve a release they had not personally tested.
-> [What did that cost? The draft does not say.]
+> The draft says most teams see deploy problems as technical, then describes the
+> issue as one of trust. [Source needed for “most teams”; what evidence supports
+> the trust claim?]
 
 Removed: throat-clearing, faux-insight, negative parallelism, "at its core,"
-trailing -ing analysis, vague declarative. The bracket marks a fact the original
-never supplied.
+trailing -ing analysis, and vague declarative. The rewrite attributes the draft's
+existing “most teams” and “trust problem” claims to the draft and flags their
+missing support. It adds no team count, approval behavior, or cost.
 
 ### 2. Feature copy
 
@@ -311,11 +313,12 @@ never supplied.
 
 **After**
 
-> The platform routes each request to whoever owns that queue, so nothing waits on
-> a manager to triage it.
+> The platform uses AI to [what does it do?]. [What productivity gains can be
+> substantiated?]
 
-Six slop words gone. The claim narrowed to what the draft could actually support.
-Every number the original implied but never gave stays out.
+The rewrite removes promotional wording and asks for the missing platform
+capability and evidence for the claimed gains. The draft names no concrete
+capability, so the bracket does not invent queue routing or manager triage.
 
 ### 3. Over-correction
 
@@ -332,13 +335,13 @@ Every number the original implied but never gave stays out.
 
 **After, right**
 
-> The migration was hard for two reasons. Teams span eleven time zones, so a
-> schema change took a full day to agree on. And the legacy schema carried
-> undocumented constraints that only appeared under production load.
+> The migration required coordination across time zones. The legacy schema had
+> years of undocumented constraints that surfaced only under production load.
 
 The first rewrite scores well on the linter and loses the argument. Short is not
-the goal. The second keeps every claim, names the mechanism, and still reads like
-a person wrote it.
+the goal. A faithful rewrite keeps the coordination across time zones and the
+legacy schema's undocumented constraints surfacing under production load. It
+does not add a timezone count, a duration, or a cause the draft never gave.
 
 ### 4. Fabrication
 
