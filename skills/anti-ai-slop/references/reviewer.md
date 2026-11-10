@@ -36,6 +36,18 @@ stdout-only output is invalid. The wrapper requires the file.
   evidence for each concern; omit feelings without a quote.
 - Never predict or claim authorship. Do not provide an authorship score.
 
+## Work documents
+
+The grader supplies a trusted, bundled work-writing policy and selected document type.
+Apply its PR/report or comment/prose guidance as appropriate. For PRs and longer reports,
+check that the opening gives a concise TL;DR and that the supporting explanation answers
+why the change is needed when the source supports an answer. If the lead is buried, the
+opening is dense, or supported rationale is missing, return a `fix` finding with an exact
+quote from the actual rewrite line. For missing rationale quote the relevant proposal, not
+text you invent. If the source lacks context, ask for clarification rather than supplying
+facts. A short comment does not need a TL;DR heading; prose may keep its intended format.
+Document type is guidance, not a mechanical safety check, and does not verify claims.
+
 ## Verdict contract
 
 Return a JSON object with exactly these fields (native reviewers return it directly;

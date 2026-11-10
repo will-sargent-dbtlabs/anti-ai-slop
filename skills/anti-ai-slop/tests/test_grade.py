@@ -86,6 +86,9 @@ class GradeTests(unittest.TestCase):
             self.assertTrue(task["redact_spec"])
             self.assertEqual(task["expect_files"], ["verdict.json"])
             self.assertIn("validate_review.py", task["check"])
+            self.assertIn("When reviewing a work document", task["spec"])
+            self.assertIn("each paragraph one main idea", task["spec"].lower())
+            self.assertIn("Selected document type: comment", task["spec"])
         run_dir = pathlib.Path(json.loads(proc.stdout)["run_dir"])
         self.assertEqual(run_dir.stat().st_mode & 0o777, 0o700)
         for name in ("manifest.json", "original.snapshot", "rewrite.snapshot",
@@ -97,6 +100,43 @@ class GradeTests(unittest.TestCase):
         self.assertEqual((run_dir / "lint.out").stat().st_mode & 0o777, 0o600)
         self.assertEqual((run_dir / "lint.err").stat().st_mode & 0o777, 0o600)
         self.assertEqual((run_dir / "run.err").stat().st_mode & 0o777, 0o600)
+
+    def test_document_type_selection_and_policy(self):
+        # Auto uses original length, even when the rewrite is much shorter.
+        self.original.write_text(" ".join(["source"] * 81))
+        self.rewrite.write_text("Short rewrite.\n")
+        proc = self.run_grade("--allow-model-review", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        result = json.loads(proc.stdout)
+        self.assertEqual(result["document_type"], "report")
+        task = json.loads((self.root / "manifest.json").read_text())["tasks"][0]
+        self.assertIn("Selected document type: report", task["spec"])
+
+    def test_auto_comment_and_prose_do_not_force_tldr(self):
+        self.original.write_text("Short source.")
+        for args, selected in (([], "comment"), (["--document-type", "comment"], "comment"),
+                               (["--document-type", "prose"], "prose")):
+            proc = self.run_grade("--allow-model-review", "--json", *args)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(json.loads(proc.stdout)["document_type"], selected)
+            task = json.loads((self.root / "manifest.json").read_text())["tasks"][0]
+            self.assertIn("Selected document type: " + selected, task["spec"])
+            if selected in ("comment", "prose"):
+                self.assertIn("Do not require a TL;DR heading", task["spec"])
+
+    def test_invalid_document_type_fails_before_ringer(self):
+        proc = self.run_grade("--allow-model-review", "--document-type", "memo")
+        self.assertEqual(proc.returncode, 2)
+        self.assertFalse((self.root / "manifest.json").exists())
+
+    def test_missing_bundled_policy_fails_before_ringer(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import grade
+        from unittest.mock import patch
+        with patch.object(grade, "WORK_WRITING", self.root / "missing-work-writing.md"):
+            result = grade.main([str(self.original), str(self.rewrite), "--allow-model-review"])
+        self.assertEqual(result, 2)
+        self.assertFalse((self.root / "manifest.json").exists())
 
     def test_valid_fail_is_exit_one(self):
         env = dict(self.env, FAKE_VERDICT=json.dumps(verdict("FAIL")))

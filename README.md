@@ -143,6 +143,13 @@ approve provider transmission with `--allow-model-review`:
 python3 skills/anti-ai-slop/scripts/grade.py original.md rewrite.md --allow-model-review
 ```
 
+The optional reviewer accepts `--document-type auto|comment|pr|report|prose`.
+`auto` uses the **original** input length: 80 words or fewer selects `comment`, and
+longer input selects `report`. This is a convenience heuristic; use an explicit type
+when purpose differs. PRs and reports get concise executive context first, followed by
+supporting technical detail. Comments do not need a TL;DR heading, and prose can retain
+its intended format. The policy is review guidance, not a claim-truth or safety check.
+
 That flag acknowledges that Ringer sends prompts to the configured provider and
 may retain prompts, logs, or artifacts in Ringer-managed locations, including
 outside the grader's private run directory. `redact_spec` redacts Ringer's run

@@ -2,8 +2,9 @@
 
 The sanitizer and linter operate locally and use only Python's standard library.
 The optional review wrapper reads only the explicitly named original and rewrite,
-`references/reviewer.md`, and the rewrite's local linter result. It does not add
-credentials, source trees, or other files to its prompt.
+the bundled `references/reviewer.md` and `references/work-writing.md`, and the rewrite's
+local linter result. The work-writing file is loaded explicitly as trusted review guidance;
+this adds no arbitrary private files, credentials, source trees, or other files to the prompt.
 
 ## Optional Ringer review
 

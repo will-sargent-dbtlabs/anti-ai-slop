@@ -133,6 +133,19 @@ links supplied by the user; without them, label the claim unverified. Do not fet
 sources or network evidence. A native reviewer must not be started automatically
 when unavailable.
 
+For PR descriptions and longer work documents, lead with a concise TL;DR at the top:
+problem or user impact, proposed change, and important decision or risk. Use a few
+short bullets as useful (roughly 40–60 words is a guide, not a strict gate), then keep
+supporting detail concise. Explain why the change is needed and cover scope, alternatives
+when supplied, tests, risks, rollout, and open questions. Predict product and staff
+review questions, but answer only from the source; keep unknowns as questions or
+unverified. Split dense paragraphs into one idea each, use bullets for parallel facts,
+and avoid forced three-item rhythm. Put attribution in a footer.
+
+Short comments start with the answer or action and need no TL;DR heading. Pure prose can
+keep its intended voice and format. The optional reviewer applies the bundled policy;
+this is a quality prompt, not automatic proof that a document is sound.
+
 For an explicitly requested Ringer panel, first check the executable without
 reading drafts or calling a model:
 

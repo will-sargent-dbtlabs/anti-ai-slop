@@ -59,3 +59,28 @@ does not.
 Read the edited draft and the original side by side. Would the writer recognize
 the edit as their own sentences, tightened? If it reads as someone else's cleaner
 version of their point, you cut too much.
+## Work writing
+
+For PR descriptions and longer work documents, lead with a concise TL;DR at the top:
+the problem or user impact, the proposed change, and the main decision or risk. Keep it
+short enough to scan in about ten seconds; a few bullets and roughly 40–60 words are
+guides, not strict gates. Put attribution in a footer.
+
+Then answer likely product and reviewer questions using supplied evidence: who is blocked,
+why the change is needed, what changes, root cause, alternatives, compatibility, tests,
+failures, permissions, and rollout risk. Leave unsupported answers as questions or mark
+them unverified. Give each paragraph one idea, split dense blocks, and use bullets for
+parallel facts. Preserve meaningful technical terms and avoid forced three-item lists.
+
+Short comments start with the answer or action. Pure prose keeps its intended voice and
+format; neither needs a mandatory TL;DR heading.
+
+Generic example:
+
+> **TL;DR**
+> - The import currently drops empty records.
+> - Preserve them and add a regression check.
+> - Confirm downstream consumers accept the change before rollout.
+>
+> The parser skips records with no fields. The source does not say whether consumers
+> rely on that behavior, so compatibility needs confirmation.

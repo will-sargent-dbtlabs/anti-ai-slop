@@ -15,8 +15,18 @@ test claims remain unverified unless the user supplies command output or an arti
 link. The grader can compare drafts but cannot establish whether a test actually ran,
 and it does not fetch sources or network evidence.
 
-Proposed but not implemented or measured: technical profiles, masked-ratio heuristics,
-and an evaluation matrix. Do not infer measured accuracy from the review.
+Implemented writing policy: optional Ringer review loads the bundled
+`references/work-writing.md` as trusted guidance and includes a selected document type
+in every reviewer task and JSON outcome. `auto` selects `comment` for original input of
+80 words or fewer and `report` otherwise; callers can override with `comment`, `pr`,
+`report`, or `prose`. This heuristic is not document understanding. PR/report review
+checks for a concise TL;DR, readable paragraphs, and supported rationale, citing actual
+rewrite lines. Comment and prose modes do not force a TL;DR heading or boilerplate.
+These prompts guide review; they do not verify claims or establish that quality improved.
+
+Still proposed and unmeasured: technical lexicon tuning, masked-ratio heuristics, and an
+evaluation matrix. The implemented writing policy has not been measured for accuracy or
+quality improvement. Do not infer measured effectiveness from its implementation.
 
 ## Suggested synthetic evaluation
 
