@@ -1,121 +1,256 @@
 #!/usr/bin/env python3
-"""Offline tests for grade.py and detect.py. No network, no API keys.
-
-Needs litellm installed for the grade.py checks; they are skipped without it.
-Run: python3 tests/test_grade.py
-"""
-
-import io
+"""Offline tests for the Ringer grader; no model, credentials, or dependencies."""
 import json
 import os
+import pathlib
 import subprocess
 import sys
 import tempfile
-import urllib.request
+import textwrap
+import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPTS = os.path.join(HERE, os.pardir, "scripts")
-FIX = os.path.join(HERE, "fixtures")
-sys.path.insert(0, SCRIPTS)
-
-PASS = json.dumps({"verdict": "PASS", "human_score": 90, "human_score_reason": "Specific.",
-                   "blocking": [], "fix": [], "note": [], "unverifiable": []})
-FAIL = "```json\n" + json.dumps({
-    "verdict": "FAIL", "human_score": 55, "human_score_reason": "Tricolons throughout.",
-    "blocking": [{"line": 3, "issue": "invented figure", "quote": "40%", "fix": "cut"}],
-    "fix": [], "note": [], "unverifiable": ["40%"]}) + "\n```"
+HERE = pathlib.Path(__file__).resolve().parent
+SCRIPTS = HERE.parent / "scripts"
+GRADE = SCRIPTS / "grade.py"
+VALIDATOR = SCRIPTS / "validate_review.py"
 
 
-def check(label, ok, detail=""):
-    print("{:4}  {}{}".format("ok" if ok else "FAIL", label, "  ({})".format(detail) if detail else ""))
-    return ok
+def finding(line=1, quote="The team shipped it."):
+    return {"line": line, "issue": "unsupported wording", "quote": quote, "fix": "revise"}
 
 
-def run_grade(*extra, env=None):
-    cmd = [sys.executable, os.path.join(SCRIPTS, "grade.py"),
-           os.path.join(FIX, "slop.md"), os.path.join(FIX, "clean.md"), "--json"] + list(extra)
-    env = dict(env if env is not None else os.environ)
-    # Never let a real saved setup on this machine change what the tests see.
-    env["ANTI_SLOP_CONFIG"] = os.path.join(tempfile.mkdtemp(), "config.json")
-    for name in ("LITELLM_PROXY_API_BASE", "LITELLM_PROXY_API_KEY"):
-        env.pop(name, None)
-    proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120)
-    try:
-        return proc.returncode, json.loads(proc.stdout)
-    except ValueError:
-        return proc.returncode, {"stderr": proc.stderr[-400:]}
+def verdict(value="PASS"):
+    return {"verdict": value, "blocking": [], "fix": [], "note": [], "unverifiable": []}
 
 
-def main():
-    ok = True
-    try:
-        import litellm  # noqa: F401
-        have_litellm = True
-    except ImportError:
-        have_litellm = False
-        print("skip  grade.py checks: litellm is not installed")
+class GradeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.temp.name)
+        self.original = self.root / "original.md"
+        self.rewrite = self.root / "rewrite.md"
+        self.original.write_text("A source sentence.\n")
+        self.rewrite.write_text("The team shipped it.\n")
+        self.fake = self.root / "ringer"
+        self.fake.write_text(textwrap.dedent(f'''\
+            #!/usr/bin/env python3
+            import json, os, pathlib, sys
+            args = sys.argv[1:]
+            if args == ["--help"]: print("usage: ringer [lint] [run]"); raise SystemExit(0)
+            if args[0] == "lint": raise SystemExit(0)
+            if args[0] != "run": raise SystemExit(3)
+            manifest = json.load(open(args[1]))
+            pathlib.Path(os.environ["MANIFEST_CAPTURE"]).write_text(json.dumps(manifest))
+            if os.environ.get("MUTATE_REWRITE"):
+                pathlib.Path(os.environ["MUTATE_REWRITE"]).write_text("Forged replacement text.\\n")
+            for task in manifest["tasks"]:
+                td = pathlib.Path(manifest["workdir"]) / task["key"]
+                td.mkdir(parents=True, exist_ok=True)
+                mode = os.environ.get("FAKE_MODE")
+                if mode == "missing" and task["key"] == "reviewer_2": continue
+                if mode == "sleep": import time; time.sleep(10)
+                raw = os.environ.get("FAKE_VERDICT", '{{"verdict":"PASS","blocking":[],"fix":[],"note":[],"unverifiable":[]}}')
+                if mode == "malformed": raw = '{{"verdict":"PASS"}}'
+                payload = json.loads(raw)
+                (td / "verdict.json").write_text(json.dumps(payload))
+            raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
+        '''))
+        self.fake.chmod(0o700)
+        self.env = dict(os.environ, RINGER_BIN=str(self.fake), MANIFEST_CAPTURE=str(self.root / "manifest.json"))
 
-    if have_litellm:
-        from grade import parse_json
-        ok &= check("parses a fenced JSON reply", parse_json(FAIL)["verdict"] == "FAIL")
+    def tearDown(self):
+        self.temp.cleanup()
 
-        code, out = run_grade("--models", "anthropic/claude-opus-5,openai/gpt-5", "--mock-response", PASS)
-        ok &= check("two-provider panel passes", code == 0 and out["summary"]["passed"], str(code))
-        ok &= check("panel reports cost", out["summary"].get("total_cost_usd") is not None)
-        ok &= check("mixed panel is not flagged single-provider",
-                    out["summary"].get("single_provider_panel") is False)
+    def run_grade(self, *args, env=None):
+        return subprocess.run([sys.executable, str(GRADE), str(self.original), str(self.rewrite), *args],
+                              text=True, capture_output=True, env=env or self.env, timeout=20)
 
-        code, out = run_grade("--models", "anthropic/claude-opus-5", "--mock-response", FAIL)
-        ok &= check("blocking finding fails the panel", code == 1 and not out["summary"]["passed"], str(code))
+    def test_consent_is_required_before_draft_read_or_ringer(self):
+        self.original.unlink()
+        proc = subprocess.run([sys.executable, str(GRADE), str(self.original), str(self.rewrite)],
+                              capture_output=True, text=True, env=self.env)
+        self.assertEqual(proc.returncode, 2)
+        self.assertFalse((self.root / "manifest.json").exists())
+        self.assertIn("--allow-model-review", proc.stderr)
 
-        code, out = run_grade("--models", "anthropic/claude-opus-5", "--mock-response", "looks fine")
-        ok &= check("unparseable reply exits 2", code == 2, str(code))
+    def test_manifest_and_private_artifacts_for_two_reviewers(self):
+        proc = self.run_grade("--allow-model-review", "--reviewer", "codex:gpt-6-luna",
+                              "--reviewer", "codex:gpt-6-terra", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        m = json.loads((self.root / "manifest.json").read_text())
+        self.assertEqual(len(m["tasks"]), 2)
+        for task in m["tasks"]:
+            self.assertEqual(task["max_attempts"], 1)
+            self.assertFalse(task["full_access"])
+            self.assertEqual(task["task_type"], "code-review")
+            self.assertTrue(task["redact_spec"])
+            self.assertEqual(task["expect_files"], ["verdict.json"])
+            self.assertIn("validate_review.py", task["check"])
+            self.assertIn("When reviewing a work document", task["spec"])
+            self.assertIn("each paragraph one main idea", task["spec"].lower())
+            self.assertIn("Selected document type: comment", task["spec"])
+        run_dir = pathlib.Path(json.loads(proc.stdout)["run_dir"])
+        self.assertEqual(run_dir.stat().st_mode & 0o777, 0o700)
+        for name in ("manifest.json", "original.snapshot", "rewrite.snapshot",
+                     "lint.out", "lint.err", "run.out", "run.err"):
+            self.assertEqual((run_dir / name).stat().st_mode & 0o777, 0o600, name)
+        self.assertEqual((run_dir / "original.snapshot").stat().st_mode & 0o777, 0o600)
+        self.assertEqual((run_dir / "rewrite.snapshot").stat().st_mode & 0o777, 0o600)
+        self.assertEqual((run_dir / "run.out").stat().st_mode & 0o777, 0o600)
+        self.assertEqual((run_dir / "lint.out").stat().st_mode & 0o777, 0o600)
+        self.assertEqual((run_dir / "lint.err").stat().st_mode & 0o777, 0o600)
+        self.assertEqual((run_dir / "run.err").stat().st_mode & 0o777, 0o600)
 
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
-                            "OPENAI_BASE_URL")}
-        code, out = run_grade("--models", "openai/gpt-5", "--timeout", "15", env=env)
-        err = (out.get("graders") or [{}])[0].get("error", out.get("stderr", ""))
-        ok &= check("missing key is reported, not a crash", code == 2 and "key" in err, err[:80])
+    def test_document_type_selection_and_policy(self):
+        # Auto uses original length, even when the rewrite is much shorter.
+        self.original.write_text(" ".join(["source"] * 81))
+        self.rewrite.write_text("Short rewrite.\n")
+        proc = self.run_grade("--allow-model-review", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        result = json.loads(proc.stdout)
+        self.assertEqual(result["document_type"], "report")
+        task = json.loads((self.root / "manifest.json").read_text())["tasks"][0]
+        self.assertIn("Selected document type: report", task["spec"])
 
-        from grade import pick_gateway_model
-        ok &= check("gateway pick prefers 3.8 Flash over older and lite",
-                    pick_gateway_model(["gemini-3.5-flash", "gemini-3.8-flash-lite", "gemini/gemini-3.8-flash"])
-                    == "gemini/gemini-3.8-flash")
-        ok &= check("gateway pick falls back to newest other Flash",
-                    pick_gateway_model(["gemini-2.9-flash", "gemini-3.9-flash"]) == "gemini-3.9-flash")
-        ok &= check("gateway pick returns None without Flash",
-                    pick_gateway_model(["claude-opus-5", "gpt-5"]) is None)
+    def test_auto_comment_and_prose_do_not_force_tldr(self):
+        self.original.write_text("Short source.")
+        for args, selected in (([], "comment"), (["--document-type", "comment"], "comment"),
+                               (["--document-type", "prose"], "prose")):
+            proc = self.run_grade("--allow-model-review", "--json", *args)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(json.loads(proc.stdout)["document_type"], selected)
+            task = json.loads((self.root / "manifest.json").read_text())["tasks"][0]
+            self.assertIn("Selected document type: " + selected, task["spec"])
+            if selected in ("comment", "prose"):
+                self.assertIn("Do not require a TL;DR heading", task["spec"])
 
-    import detect
-    sent = {}
+    def test_invalid_document_type_fails_before_ringer(self):
+        proc = self.run_grade("--allow-model-review", "--document-type", "memo")
+        self.assertEqual(proc.returncode, 2)
+        self.assertFalse((self.root / "manifest.json").exists())
 
-    class Resp(io.BytesIO):
-        def __enter__(self):
-            return self
+    def test_missing_bundled_policy_fails_before_ringer(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import grade
+        from unittest.mock import patch
+        with patch.object(grade, "WORK_WRITING", self.root / "missing-work-writing.md"):
+            result = grade.main([str(self.original), str(self.rewrite), "--allow-model-review"])
+        self.assertEqual(result, 2)
+        self.assertFalse((self.root / "manifest.json").exists())
 
-        def __exit__(self, *a):
-            return False
+    def test_valid_fail_is_exit_one(self):
+        env = dict(self.env, FAKE_VERDICT=json.dumps(verdict("FAIL")))
+        proc = self.run_grade("--allow-model-review", env=env)
+        self.assertEqual(proc.returncode, 1)
 
-    def fake(req, timeout=None):
-        sent["body"] = json.loads(req.data)
-        return Resp(json.dumps({"score": 0.2, "sentence_scores": [
-            {"score": 0.4, "sentence": "A sentence."}]}).encode())
+    def test_end_to_end_pass_with_blocking_finding_is_malformed(self):
+        env = dict(self.env, FAKE_VERDICT=json.dumps({**verdict("PASS"), "blocking": [finding()]}))
+        proc = self.run_grade("--allow-model-review", env=env)
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
 
-    real = urllib.request.urlopen
-    urllib.request.urlopen = fake
-    try:
-        result = detect.sapling(detect.prose_only(open(os.path.join(FIX, "masking.md")).read()), 5, "k" * 32)
-    finally:
-        urllib.request.urlopen = real
-    ok &= check("detector parses score and sentences",
-                result["score"] == 0.2 and result["sentences"][0]["score"] == 0.4)
-    ok &= check("code and URLs never leave the machine",
-                "```" not in sent["body"]["text"] and "https://" not in sent["body"]["text"])
+    def test_end_to_end_pass_with_fix_or_unverifiable_is_malformed(self):
+        for section, value in (("fix", [finding()]), ("unverifiable", ["claim not evidenced"])):
+            with self.subTest(section=section):
+                env = dict(self.env, FAKE_VERDICT=json.dumps({**verdict("PASS"), section: value}))
+                proc = self.run_grade("--allow-model-review", env=env)
+                self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
 
-    print("\n{}".format("all checks passed" if ok else "FAILURES ABOVE"))
-    return 0 if ok else 1
+    def test_rewrite_mutation_after_manifest_does_not_break_snapshot_evidence(self):
+        # Worker changes the caller's path after manifest creation. Findings must bind
+        # to the private startup snapshot that was also included in the task prompt.
+        env = dict(self.env, MUTATE_REWRITE=str(self.rewrite),
+                   FAKE_VERDICT=json.dumps({**verdict("FAIL"), "blocking": [finding()]}))
+        proc = self.run_grade("--allow-model-review", "--json", env=env)
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        self.assertIn("The team shipped it.", manifest["tasks"][0]["spec"])
+        self.assertEqual(self.rewrite.read_text(), "Forged replacement text.\n")
+
+    def test_prompt_requires_exact_task_verdict_file_and_single_file_write(self):
+        self.run_grade("--allow-model-review")
+        task = json.loads((self.root / "manifest.json").read_text())["tasks"][0]
+        spec = task["spec"]
+        self.assertIn("stdout-only output is invalid", spec.lower())
+        self.assertIn("verdict.json", spec)
+        self.assertIn("no actions are allowed except one file write", spec.lower())
+        self.assertIn("write", spec.lower())
+        self.assertIn(str(pathlib.Path(json.loads((self.root / "manifest.json").read_text())["workdir"]) / "reviewer_1" / "verdict.json"), spec)
+
+    def test_lint_failure_stops_before_ringer_workers(self):
+        self.rewrite.write_text((HERE / "fixtures" / "slop.md").read_text())
+        proc = self.run_grade("--allow-model-review")
+        self.assertEqual(proc.returncode, 1)
+        self.assertFalse((self.root / "manifest.json").exists())
+
+    def test_nonzero_ringer_fails_closed(self):
+        proc = self.run_grade("--allow-model-review", env=dict(self.env, FAKE_EXIT="9"))
+        self.assertEqual(proc.returncode, 2)
+
+    def test_malformed_verdict_fails_closed(self):
+        proc = self.run_grade("--allow-model-review", env=dict(self.env, FAKE_MODE="malformed"))
+        self.assertEqual(proc.returncode, 2)
+
+    def test_timeout_fails_closed(self):
+        proc = self.run_grade("--allow-model-review", "--timeout", "3",
+                              env=dict(self.env, FAKE_MODE="sleep"))
+        self.assertEqual(proc.returncode, 2)
+
+    def test_missing_ringer_fails_without_credentials(self):
+        env = dict(self.env, RINGER_BIN=str(self.root / "missing"))
+        proc = self.run_grade("--allow-model-review", env=env)
+        self.assertEqual(proc.returncode, 2)
+
+    def test_shell_metacharacters_in_input_path_are_quoted_as_data(self):
+        odd = self.root / "draft ; $(echo nope).md"
+        odd.write_text("The team shipped it.\n")
+        self.rewrite = odd
+        proc = self.run_grade("--allow-model-review")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        self.assertIn("rewrite.snapshot", manifest["tasks"][0]["check"])
+        self.assertNotIn(str(odd.resolve()), manifest["tasks"][0]["check"])
+
+    def test_consent_gate_does_not_resolve_or_open_inputs(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import grade
+        from unittest.mock import patch
+        with patch.object(grade, "resolve_ringer", side_effect=AssertionError("spawn resolution")), \
+                patch.object(grade, "safe_regular_file", side_effect=AssertionError("input access")):
+            self.assertEqual(grade.main([str(self.original), str(self.rewrite)]), 2)
+
+    def test_missing_one_reviewer_fails_closed(self):
+        proc = self.run_grade("--allow-model-review", "--reviewer", "codex:a", "--reviewer", "codex:b",
+                              env=dict(self.env, FAKE_MODE="missing"))
+        self.assertEqual(proc.returncode, 2)
+
+    def test_validator_rejects_wrong_quote_and_bool_line(self):
+        result = self.root / "result.json"
+        for item in (finding(quote="not present"), finding(line=True)):
+            result.write_text(json.dumps({**verdict("FAIL"), "blocking": [item]}))
+            proc = subprocess.run([sys.executable, str(VALIDATOR), "--rewrite", str(self.rewrite),
+                                   "--verdict", str(result)], capture_output=True, text=True)
+            self.assertNotEqual(proc.returncode, 0)
+
+    def test_validator_rejects_duplicate_json_keys(self):
+        result = self.root / "result.json"
+        result.write_text('{"verdict":"PASS","verdict":"FAIL","blocking":[],"fix":[],"note":[],"unverifiable":[]}')
+        proc = subprocess.run([sys.executable, str(VALIDATOR), "--rewrite", str(self.rewrite),
+                               "--verdict", str(result)], capture_output=True, text=True)
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_validator_accepts_valid_findings_even_when_verdict_fails(self):
+        result = self.root / "result.json"
+        result.write_text(json.dumps({**verdict("FAIL"), "blocking": [finding()]}))
+        proc = subprocess.run([sys.executable, str(VALIDATOR), "--rewrite", str(self.rewrite),
+                               "--verdict", str(result)], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_check_setup_is_read_only(self):
+        proc = subprocess.run([sys.executable, str(GRADE), "--check-setup", "--ringer", str(self.fake)],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse((self.root / "manifest.json").exists())
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    unittest.main()

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="880" height="780" viewBox="0 0 880 780" role="img" aria-labelledby="t d">
   <title id="t">anti-ai-slop gates</title>
-  <desc id="d">A draft is rewritten, then passes four gates: invisible characters, a linter, a second agent review, and an optional review by another model. Failing drafts go back to the rewrite, up to two passes.</desc>
+  <desc id="d">A draft is rewritten, then checked for invisible characters, lint patterns, fidelity, and optionally by a consented Ringer reviewer.</desc>
   <style>
     .bg{fill:#ffffff}
     .card{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.5}
@@ -77,9 +77,9 @@
   <!-- Gate 3 -->
   <rect class="card" x="40" y="440" width="660" height="124" rx="12"/>
   <text class="label" x="64" y="472">GATE 3</text>
-  <text class="title" x="64" y="498">Second agent</text>
-  <text class="sub" x="64" y="522">sees both drafts,</text>
-  <text class="sub" x="64" y="542">not the reasoning</text>
+  <text class="title" x="64" y="498">Fidelity review</text>
+  <text class="sub" x="64" y="522">writer self-check</text>
+  <text class="sub" x="64" y="542">independent if asked</text>
   <line class="divider" x1="288" y1="456" x2="288" y2="548"/>
   <text class="check" x="308" y="470">• Made-up facts and connections</text>
   <text class="check" x="308" y="494">• Changed meaning, dropped caveats</text>
@@ -90,12 +90,12 @@
   <!-- Gate 4 -->
   <rect class="opt" x="40" y="588" width="660" height="100" rx="12"/>
   <text class="label" x="64" y="618">GATE 4 · OPTIONAL</text>
-  <text class="title" x="64" y="644">Another model</text>
-  <text class="sub" x="64" y="668">grade.py via LiteLLM</text>
+  <text class="title" x="64" y="644">Ringer review</text>
+  <text class="sub" x="64" y="668">grade.py · consent required</text>
   <line class="divider" x1="288" y1="604" x2="288" y2="672"/>
-  <text class="check" x="308" y="620">• Same review by a different model</text>
-  <text class="check" x="308" y="644">• Gemini 3.8 Flash by default, any provider</text>
-  <text class="check" x="308" y="668">• Human score and cost per reviewer</text>
+  <text class="check" x="308" y="620">• Default worker: codex / gpt-6-luna</text>
+  <text class="check" x="308" y="644">• Validated verdict file required</text>
+  <text class="check" x="308" y="668">• PASS, FAIL, or malformed result</text>
   <line class="flow" x1="370" y1="688" x2="370" y2="710" marker-end="url(#a)"/>
 
   <!-- Result -->

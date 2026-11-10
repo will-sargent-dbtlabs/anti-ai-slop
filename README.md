@@ -4,7 +4,7 @@ A skill for Claude Code, Codex, and other coding agents that removes AI-writing 
 from a draft and then checks the result before handing it back.
 
 <p align="center">
-  <img src="assets/gates.svg" alt="A draft is rewritten, then passes four gates: invisible characters, a linter, a second agent review, and an optional review by another model. Drafts that fail go back to the rewrite, up to two passes." width="100%">
+  <img src="assets/gates.svg" alt="A draft is rewritten, then checked for invisible characters, lint patterns, fidelity, and optionally by a consented Ringer reviewer." width="100%">
 </p>
 
 ## What it catches
@@ -82,44 +82,39 @@ four gates before you see it:
    AI vocabulary, empty phrases, chatbot leftovers, unsourced claims, contrast habits,
    rhythm, and formatting. It skips code and quotes, gives the same score every time,
    and needs 90 with no serious findings.
-3. **Gate 3: a second agent.** It gets the original and the rewrite, but not the first
-   agent's reasoning. It catches what a script can't: made-up facts, made-up
-   connections, changed meaning, dropped caveats, synonym cycling, and any slop the
-   linter missed.
-4. **Gate 4, optional: another model.** The same review, run by Gemini 3.8 Flash by
-   default through [LiteLLM](https://github.com/BerriAI/litellm). You can swap in any
-   provider or add several, and each one reports a human score and its cost.
+3. **Gate 3: a fidelity self-check.** Compare the original and rewrite for made-up
+   facts, changed meaning, dropped caveats, and unsupported verification claims.
+   Ask for an independent reviewer only when you want one.
+4. **Gate 4, optional: another model.** An independent review through a locally
+   installed Ringer CLI. It defaults to `codex:gpt-6-luna`, requires explicit
+   consent, and calculates no authorship score.
 
-If a check fails, the draft goes back for another pass, up to two times. Anything
-still unresolved is listed for you instead of hidden.
+If a check fails, fix it and verify again. List unresolved issues clearly.
 
-The second reviewer is there because the linter can't tell a real fact from an
-invented one. In testing, rewrites that scored 100 on the linter still had details the
-original never mentioned.
+Treat linter findings as leads, not proof. It can flag useful technical terms,
+invariants, and necessary contrasts. Meaning, names, quantities, and qualifiers
+take priority; justify retained findings with a written suppression reason.
 
-By default the skill assumes a model wrote the draft and cuts hard. If you say you
-wrote it yourself, it keeps your voice and only fixes the obvious tells.
+For co-written or user-authored technical work, default to the minimum effective
+edit and preserve voice and caveats. Do not target a word-count reduction. Comments
+need one self-check, PRs need meaning, verification, and risk checks, and long
+reports get at most two passes. Independent review is optional and requires consent.
 
 ## Install
 
 For Claude Code:
 
 ```bash
-git clone https://github.com/misbahsy/anti-ai-slop.git
+git clone https://github.com/will-sargent-dbtlabs/anti-ai-slop.git
 cp -r anti-ai-slop/skills/anti-ai-slop ~/.claude/skills/
 ```
 
 For other agents, copy `skills/anti-ai-slop` into whatever folder your agent loads
 skills from.
 
-The checks need Python 3.8 or newer. The optional model review also needs LiteLLM:
-
-```bash
-pip install litellm
-```
-
-The first time you ask for a model review, the agent asks where your API key is stored
-and runs everything for you. It saves where the key lives, never the key itself.
+The scripts use only the Python standard library. Optional model review requires
+an existing Ringer CLI (`ringer.py` or `ringer` on `PATH`, or `RINGER_BIN` / `--ringer`).
+This project does not install Ringer or its worker dependencies.
 
 ## Use it
 
@@ -141,10 +136,36 @@ python3 skills/anti-ai-slop/scripts/slopcheck.py draft.md
 python3 skills/anti-ai-slop/scripts/grade.py original.md rewrite.md
 ```
 
+Model review is a separate action. The user must explicitly request it, then
+approve provider transmission with `--allow-model-review`:
+
+```bash
+python3 skills/anti-ai-slop/scripts/grade.py original.md rewrite.md --allow-model-review
+```
+
+The optional reviewer accepts `--document-type auto|comment|pr|report|prose`.
+`auto` uses the **original** input length: 80 words or fewer selects `comment`, and
+longer input selects `report`. This is a convenience heuristic; use an explicit type
+when purpose differs. PRs and reports get concise executive context first, followed by
+supporting technical detail. Comments do not need a TL;DR heading, and prose can retain
+its intended format. The policy is review guidance, not a claim-truth or safety check.
+
+That flag acknowledges that Ringer sends prompts to the configured provider and
+may retain prompts, logs, or artifacts in Ringer-managed locations, including
+outside the grader's private run directory. `redact_spec` redacts Ringer's run
+records where supported; it does not erase raw worker logs or guarantee privacy.
+Ringer configuration and workers are trusted user-controlled tooling, not a hard
+security boundary. The grader adds no private files, source trees, or credentials
+to a review; it reads only the named drafts, reviewer guidance, and local lint
+result. Use `--reviewer ENGINE:MODEL` repeatedly for a panel, `--timeout N` to
+bound the whole run, `--json` for structured output, and `--check-setup` to test
+Ringer's `--help` response without a model call or credentials.
+
 `slopcheck.py` exits with 0 on a pass and 1 on a fail, so it works in a pre-commit
 hook or CI.
 
-If the linter flags something you want to keep, add a comment to that line:
+If a linter finding is valid technical wording you want to keep, explain why in a
+comment on that line:
 
 ```markdown
 Our leverage ratio fell to 2.1x. <!-- slop-ignore W1 -->
@@ -154,12 +175,11 @@ Our leverage ratio fell to 2.1x. <!-- slop-ignore W1 -->
 
 ```bash
 python3 skills/anti-ai-slop/tests/test_slopcheck.py
-python3 skills/anti-ai-slop/tests/test_credentials.py
 python3 skills/anti-ai-slop/tests/test_grade.py
+python3 skills/anti-ai-slop/tests/test_sanitize.py
 ```
 
-No network or API keys needed. One of the tests checks that the skill's own docs pass
-the linter.
+No network or API keys are needed for these offline tests.
 
 ## Adding rules
 
